@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HR Attrition · MongoDB Analytics</title>
+  <meta name="description" content="Interactive dashboard to explore HR attrition data using MongoDB CRUD, Aggregations, Indexing and ML predictions." />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<!-- ── SIDEBAR ──────────────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div class="logo">
+      <div class="logo-icon-wrap">🍃</div>
+      <div>
+        <div class="logo-title">HR Analytics</div>
+        <div class="logo-sub">MongoDB Dashboard</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="conn-status" id="connStatus">
+    <span class="conn-dot" id="connDot"></span>
+    <span class="conn-text" id="connText">Connecting…</span>
+  </div>
+
+  <nav class="nav">
+    <div class="nav-section-label">Overview</div>
+    <a class="nav-item active" data-tab="overview" href="#">
+      <span class="nav-icon">📊</span> Dashboard
+    </a>
+    <a class="nav-item" data-tab="employees" href="#">
+      <span class="nav-icon">👥</span> Employees
+    </a>
+    <a class="nav-item" data-tab="projects" href="#">
+      <span class="nav-icon">📁</span> Projects
+    </a>
+
+    <div class="nav-section-label">MongoDB Demos</div>
+    <a class="nav-item" data-tab="bson" href="#">
+      <span class="nav-icon">🔢</span> BSON Types
+    </a>
+    <a class="nav-item" data-tab="crud" href="#">
+      <span class="nav-icon">✏️</span> CRUD Ops
+    </a>
+    <a class="nav-item" data-tab="aggregations" href="#">
+      <span class="nav-icon">⚙️</span> Aggregations
+    </a>
+    <a class="nav-item" data-tab="indexing" href="#">
+      <span class="nav-icon">⚡</span> Indexing
+    </a>
+
+    <div class="nav-section-label">AI / ML</div>
+    <a class="nav-item" data-tab="ml" href="#">
+      <span class="nav-icon">🤖</span> ML Predictions
+    </a>
+  </nav>
+
+  <div class="sidebar-footer">
+    Data: IBM HR Attrition Dataset<br/>
+    1,470 employee records
+  </div>
+</aside>
+
+<!-- ── MAIN ─────────────────────────────────────────────────────── -->
+<main class="main">
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+      <div class="page-title" id="pageTitle">Dashboard</div>
+    </div>
+    <div class="topbar-right">
+      <div class="db-badge" id="dbBadge">hr_analytics</div>
+      <button class="refresh-btn" onclick="refreshCurrent()">↻ Refresh</button>
+    </div>
+  </header>
+
+  <!-- ═══ OVERVIEW ═══════════════════════════════════════════════ -->
+  <section class="tab active" id="tab-overview">
+    <div class="stats-grid" id="statsGrid"></div>
+
+    <div class="cards-row">
+      <div class="card half">
+        <div class="card-header">
+          <h3>Attrition by Department</h3>
+          <span class="badge badge-agg">$group · $lookup</span>
+        </div>
+        <div id="deptChart" class="bar-chart-wrap"></div>
+      </div>
+      <div class="card half">
+        <div class="card-header">
+          <h3>Income Distribution</h3>
+          <span class="badge badge-agg">$bucket</span>
+        </div>
+        <div id="incomeChart" class="bar-chart-wrap"></div>
+      </div>
+    </div>
+
+    <div class="cards-row">
+      <div class="card third">
+        <div class="card-header">
+          <h3>Overtime Impact</h3>
+          <span class="badge badge-agg">$addFields</span>
+        </div>
+        <div id="overtimeChart"></div>
+      </div>
+      <div class="card third">
+        <div class="card-header">
+          <h3>Engagement by Quarter</h3>
+          <span class="badge badge-agg">$unwind</span>
+        </div>
+        <div id="engagementChart" class="bar-chart-wrap"></div>
+      </div>
+      <div class="card third">
+        <div class="card-header">
+          <h3>Top Risk Roles</h3>
+          <span class="badge badge-agg">$facet</span>
+        </div>
+        <div id="riskRolesChart" class="bar-chart-wrap"></div>
+      </div>
+    </div>
+
+    <div class="card full">
+      <div class="card-header">
+        <h3>Attrition by Job Level</h3>
+        <span class="badge badge-agg">$group · $sort</span>
+      </div>
+      <div id="levelChart" class="bar-chart-wrap"></div>
+    </div>
+  </section>
+
+  <!-- ═══ EMPLOYEES ══════════════════════════════════════════════ -->
+  <section class="tab" id="tab-employees">
+    <div class="card full">
+      <div class="card-header">
+        <h3>Employee Browser</h3>
+        <div class="filter-row">
+          <select id="filterDept" onchange="loadEmployees(1)">
+            <option value="">All Departments</option>
+            <option value="SALES">Sales</option>
+            <option value="RND">R&amp;D</option>
+            <option value="HR">HR</option>
+          </select>
+          <select id="filterAttrition" onchange="loadEmployees(1)">
+            <option value="">All Status</option>
+            <option value="1">Attrited</option>
+            <option value="0">Retained</option>
+          </select>
+          <input type="text" id="searchRole" placeholder="Search role…" oninput="loadEmployees(1)" />
+        </div>
+      </div>
+      <div id="employeeTable"></div>
+      <div class="pagination" id="empPagination"></div>
+    </div>
+
+    <div class="modal-overlay" id="empModal" onclick="closeModal()">
+      <div class="modal" onclick="event.stopPropagation()">
+        <button class="modal-close" onclick="closeModal()">✕</button>
+        <div id="modalContent"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ PROJECTS ════════════════════════════════════════════════ -->
+  <section class="tab" id="tab-projects">
+    <div class="card full">
+      <div class="card-header">
+        <h3>Projects</h3>
+        <span class="badge badge-schema">Many-to-Many · Referencing</span>
+      </div>
+      <div id="projectsTable"></div>
+    </div>
+  </section>
+
+  <!-- ═══ BSON TYPES ══════════════════════════════════════════════ -->
+  <section class="tab" id="tab-bson">
+    <div class="card full">
+      <div class="card-header">
+        <h3>BSON Data Types Demo</h3>
+        <span class="badge badge-info">Unit II</span>
+      </div>
+      <p class="desc">Inserts one document containing every common BSON type, uses the <code>$type</code> aggregation operator to inspect the stored types, then deletes the document — all in a single round trip.</p>
+      <button class="btn btn-primary" onclick="runBsonDemo()">▶ Run BSON Type Demo</button>
+      <div id="bsonResult" class="result-box"></div>
+    </div>
+  </section>
+
+  <!-- ═══ CRUD ════════════════════════════════════════════════════ -->
+  <section class="tab" id="tab-crud">
+    <div class="cards-row">
+      <div class="card half">
+        <div class="card-header">
+          <h3>CREATE</h3>
+          <span class="badge badge-green">insert_one · insert_many</span>
+        </div>
+        <p class="desc">Inserts one document with <code>insert_one</code> and five batch documents with <code>insert_many</code> into the <code>crud_sandbox</code> collection.</p>
+        <button class="btn btn-primary" onclick="runCrud('create')">▶ Run Create</button>
+        <div id="crudCreateResult" class="result-box"></div>
+      </div>
+      <div class="card half">
+        <div class="card-header">
+          <h3>READ</h3>
+          <span class="badge badge-blue">find · $gt · $in · $regex</span>
+        </div>
+        <p class="desc">Queries the real <strong>employees</strong> collection using comparison operators, projection, sort, and pagination.</p>
+        <button class="btn btn-primary" onclick="runCrud('read')">▶ Run Read</button>
+        <div id="crudReadResult" class="result-box"></div>
+      </div>
+    </div>
+    <div class="cards-row">
+      <div class="card half">
+        <div class="card-header">
+          <h3>UPDATE</h3>
+          <span class="badge badge-orange">$set · $inc · $push · upsert</span>
+        </div>
+        <p class="desc">Demonstrates <code>update_one</code>, <code>update_many</code>, upsert, <code>$push</code> to grow arrays, and <code>find_one_and_update</code>.</p>
+        <button class="btn btn-primary" onclick="runCrud('update')">▶ Run Update</button>
+        <div id="crudUpdateResult" class="result-box"></div>
+      </div>
+      <div class="card half">
+        <div class="card-header">
+          <h3>DELETE</h3>
+          <span class="badge badge-red">delete_one · delete_many</span>
+        </div>
+        <p class="desc">Inserts sandbox documents then removes them with <code>delete_one</code> (single match) and <code>delete_many</code> (filter-based bulk removal).</p>
+        <button class="btn btn-primary" onclick="runCrud('delete')">▶ Run Delete</button>
+        <div id="crudDeleteResult" class="result-box"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ AGGREGATIONS ════════════════════════════════════════════ -->
+  <section class="tab" id="tab-aggregations">
+    <div class="agg-grid">
+      <div class="card">
+        <div class="card-header">
+          <h3>Pipeline 1 – By Department</h3>
+          <span class="badge badge-agg">$group · $lookup</span>
+        </div>
+        <p class="desc">Groups employees by department, computes attrition rate, then enriches with <code>$lookup</code> to join the departments collection.</p>
+        <button class="btn btn-primary" onclick="runAgg('by-department','aggDept')">▶ Run</button>
+        <div id="aggDept" class="result-box"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Pipeline 2 – By Job Level</h3>
+          <span class="badge badge-agg">$group · $sort</span>
+        </div>
+        <p class="desc">Attrition rate and average income broken down by job level (1–5) with a final <code>$sort</code>.</p>
+        <button class="btn btn-primary" onclick="runAgg('by-job-level','aggLevel')">▶ Run</button>
+        <div id="aggLevel" class="result-box"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Pipeline 3 – Overtime Impact</h3>
+          <span class="badge badge-agg">$addFields · $cond</span>
+        </div>
+        <p class="desc">Does overtime drive attrition? Groups on the boolean field and uses <code>$addFields</code> + <code>$cond</code> to add a readable label.</p>
+        <button class="btn btn-primary" onclick="runAgg('overtime-impact','aggOvertime')">▶ Run</button>
+        <div id="aggOvertime" class="result-box"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Pipeline 4 – Income Distribution</h3>
+          <span class="badge badge-agg">$bucket</span>
+        </div>
+        <p class="desc">Fixed-boundary salary buckets using <code>$bucket</code>. Shows how attrition correlates with income ranges.</p>
+        <button class="btn btn-primary" onclick="runAgg('income-distribution','aggIncome')">▶ Run</button>
+        <div id="aggIncome" class="result-box"></div>
+      </div>
+
+      <div class="card full-width">
+        <div class="card-header">
+          <h3>Pipeline 5 – $facet Dashboard (5 sub-pipelines in ONE query)</h3>
+          <span class="badge badge-agg">$facet</span>
+        </div>
+        <p class="desc">A single aggregation returns five completely different result shapes simultaneously — totals, by-department, income stats, travel impact and top-risk roles — in one MongoDB round trip.</p>
+        <button class="btn btn-primary" onclick="runAgg('dashboard-facet','aggFacet')">▶ Run</button>
+        <div id="aggFacet" class="result-box"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Pipeline 6 – Engagement by Quarter</h3>
+          <span class="badge badge-agg">$unwind · $group</span>
+        </div>
+        <p class="desc">Each employee document contains an embedded <code>engagement_history</code> array. <code>$unwind</code> flattens it so we can group by quarter.</p>
+        <button class="btn btn-primary" onclick="runAgg('engagement-by-quarter','aggEngagement')">▶ Run</button>
+        <div id="aggEngagement" class="result-box"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Pipeline 7 – Top 3 Earners / Dept</h3>
+          <span class="badge badge-agg">$push · $slice</span>
+        </div>
+        <p class="desc">Sort then group with <code>$push</code> to accumulate all employees into arrays, then use <code>$slice</code> to keep only the top 3.</p>
+        <button class="btn btn-primary" onclick="runAgg('top-earners','aggTopEarners')">▶ Run</button>
+        <div id="aggTopEarners" class="result-box"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Pipeline 8 – Age Bands</h3>
+          <span class="badge badge-agg">$bucketAuto</span>
+        </div>
+        <p class="desc">Let MongoDB automatically determine 4 equal-frequency age buckets with <code>$bucketAuto</code>, a powerful alternative to manual boundaries.</p>
+        <button class="btn btn-primary" onclick="runAgg('age-bands','aggAgeBands')">▶ Run</button>
+        <div id="aggAgeBands" class="result-box"></div>
+      </div>
+
+      <div class="card full-width">
+        <div class="card-header">
+          <h3>Pipeline 9 – Exit Interview Text Search</h3>
+          <span class="badge badge-agg">$text · $group · $sort</span>
+        </div>
+        <p class="desc">Full-text search on the <code>exit_interviews</code> collection using a <code>$text</code> index. Group matching exits by department.</p>
+        <div class="input-row">
+          <input type="text" id="exitSearchQ" value="overtime burnout hours" />
+          <button class="btn btn-primary" onclick="runExitSearch()">▶ Search</button>
+        </div>
+        <div id="aggExitSearch" class="result-box"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ INDEXING ════════════════════════════════════════════════ -->
+  <section class="tab" id="tab-indexing">
+    <div class="card full">
+      <div class="card-header">
+        <h3>Index Performance: BEFORE vs AFTER</h3>
+        <span class="badge badge-info">Unit IV</span>
+      </div>
+      <p class="desc">Runs <code>explain("executionStats")</code> before and after creating three different index types. Watch <em>COLLSCAN → IXSCAN</em> and the dramatic drop in <em>docsExamined</em>.</p>
+      <button class="btn btn-primary" onclick="runIndexingDemo()">▶ Run Explain Demo</button>
+      <div id="indexingResult"></div>
+    </div>
+    <div class="card full">
+      <div class="card-header">
+        <h3>Current Index Inventory</h3>
+        <span class="badge badge-info">index_information()</span>
+      </div>
+      <p class="desc">Lists every index on every collection in the database.</p>
+      <button class="btn btn-secondary" onclick="loadIndexInventory()">📋 Load Inventory</button>
+      <div id="indexInventory" class="result-box"></div>
+    </div>
+  </section>
+
+  <!-- ═══ ML PREDICTIONS ══════════════════════════════════════════ -->
+  <section class="tab" id="tab-ml">
+
+    <!-- Step 1 -->
+    <div class="card full">
+      <div class="card-header">
+        <h3>Step 1 — Train the Model</h3>
+        <span class="badge badge-purple">RandomForest · MongoDB → pandas</span>
+      </div>
+      <p class="desc">
+        Loads all <strong>1,470 employee documents</strong> directly from <code>hr_analytics.employees</code>,
+        trains a <strong>RandomForestClassifier</strong> with stratified 80/20 split and class balancing,
+        then caches the model in Flask memory. Each live prediction is saved to a
+        <code>prediction_log</code> collection as an audit trail.
+      </p>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-primary" id="trainBtn" onclick="trainModel()">⚡ Train Model from MongoDB</button>
+        <button class="btn btn-secondary" onclick="loadModelInfo()">ℹ️ Check Status</button>
+        <span id="trainStatus" style="font-size:12px;color:var(--text-muted)"></span>
+      </div>
+      <div id="modelInfoBox"></div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="card full">
+      <div class="card-header">
+        <h3>Step 2 — Predict Attrition Risk</h3>
+        <span class="badge badge-purple">predict_proba() · insert_one</span>
+      </div>
+      <p class="desc">
+        Fill in employee attributes and click <strong>Predict</strong>. The model calculates a
+        risk probability using all 29 features. The prediction is automatically saved to
+        <code>prediction_log</code> in MongoDB.
+      </p>
+
+      <form id="predictForm" onsubmit="runPredict(event)">
+        <div class="form-section-label">👤 Demographics</div>
+        <div class="form-grid">
+          <div class="form-field">
+            <label for="f_age">Age</label>
+            <input type="number" id="f_age" min="18" max="60" value="35" />
+          </div>
+          <div class="form-field">
+            <label for="f_gender">Gender</label>
+            <select id="f_gender"><option>Male</option><option>Female</option></select>
+          </div>
+          <div class="form-field">
+            <label for="f_marital_status">Marital Status</label>
+            <select id="f_marital_status">
+              <option>Single</option><option>Married</option><option>Divorced</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="f_business_travel">Business Travel</label>
+            <select id="f_business_travel">
+              <option>Non-Travel</option>
+              <option>Travel_Rarely</option>
+              <option selected>Travel_Frequently</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="f_distance">Distance from Home (km)</label>
+            <input type="number" id="f_distance" min="1" max="100" value="15" />
+          </div>
+        </div>
+
+        <div class="form-section-label">💼 Job Details</div>
+        <div class="form-grid">
+          <div class="form-field">
+            <label for="f_department">Department</label>
+            <select id="f_department">
+              <option>Sales</option>
+              <option>Research &amp; Development</option>
+              <option>Human Resources</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="f_job_role">Job Role</label>
+            <select id="f_job_role">
+              <option>Sales Executive</option>
+              <option>Sales Representative</option>
+              <option>Research Scientist</option>
+              <option>Laboratory Technician</option>
+              <option>Manufacturing Director</option>
+              <option>Research Director</option>
+              <option>Healthcare Representative</option>
+              <option>Manager</option>
+              <option>Human Resources</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="f_job_level">Job Level (1–5)</label>
+            <input type="number" id="f_job_level" min="1" max="5" value="2" />
+          </div>
+          <div class="form-field">
+            <label for="f_education_field">Education Field</label>
+            <select id="f_education_field">
+              <option>Life Sciences</option><option>Medical</option>
+              <option>Marketing</option><option>Technical Degree</option>
+              <option>Human Resources</option><option>Other</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Overtime</label>
+            <div class="toggle-wrap">
+              <input type="checkbox" id="f_overtime" />
+              <label for="f_overtime" class="toggle-label"><span class="toggle-knob"></span></label>
+              <span id="overtimeLabel" style="font-size:12px;color:var(--text-dim)">No overtime</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section-label">💰 Compensation</div>
+        <div class="form-grid">
+          <div class="form-field">
+            <label for="f_monthly_income">Monthly Income ($)</label>
+            <input type="number" id="f_monthly_income" min="1000" max="25000" value="4500" />
+          </div>
+          <div class="form-field">
+            <label for="f_daily_rate">Daily Rate ($)</label>
+            <input type="number" id="f_daily_rate" min="100" max="1500" value="600" />
+          </div>
+          <div class="form-field">
+            <label for="f_hourly_rate">Hourly Rate ($)</label>
+            <input type="number" id="f_hourly_rate" min="30" max="120" value="65" />
+          </div>
+          <div class="form-field">
+            <label for="f_monthly_rate">Monthly Rate ($)</label>
+            <input type="number" id="f_monthly_rate" min="2000" max="27000" value="14000" />
+          </div>
+          <div class="form-field">
+            <label for="f_salary_hike">Salary Hike (%)</label>
+            <input type="number" id="f_salary_hike" min="0" max="25" value="12" />
+          </div>
+          <div class="form-field">
+            <label for="f_stock_option">Stock Option Level (0–3)</label>
+            <input type="number" id="f_stock_option" min="0" max="3" value="1" />
+          </div>
+        </div>
+
+        <div class="form-section-label">😊 Satisfaction (1 = Low, 4 = High)</div>
+        <div class="form-grid">
+          <div class="form-field">
+            <label>Environment Satisfaction</label>
+            <div class="slider-wrap">
+              <input type="range" id="f_env_sat" min="1" max="4" value="3" oninput="updSlider(this,'envSatVal')" />
+              <span id="envSatVal" class="slider-val">3</span>
+            </div>
+          </div>
+          <div class="form-field">
+            <label>Job Satisfaction</label>
+            <div class="slider-wrap">
+              <input type="range" id="f_job_sat" min="1" max="4" value="3" oninput="updSlider(this,'jobSatVal')" />
+              <span id="jobSatVal" class="slider-val">3</span>
+            </div>
+          </div>
+          <div class="form-field">
+            <label>Relationship Satisfaction</label>
+            <div class="slider-wrap">
+              <input type="range" id="f_rel_sat" min="1" max="4" value="3" oninput="updSlider(this,'relSatVal')" />
+              <span id="relSatVal" class="slider-val">3</span>
+            </div>
+          </div>
+          <div class="form-field">
+            <label>Work-Life Balance</label>
+            <div class="slider-wrap">
+              <input type="range" id="f_wlb" min="1" max="4" value="3" oninput="updSlider(this,'wlbVal')" />
+              <span id="wlbVal" class="slider-val">3</span>
+            </div>
+          </div>
+          <div class="form-field">
+            <label>Job Involvement</label>
+            <div class="slider-wrap">
+              <input type="range" id="f_job_inv" min="1" max="4" value="3" oninput="updSlider(this,'jobInvVal')" />
+              <span id="jobInvVal" class="slider-val">3</span>
+            </div>
+          </div>
+          <div class="form-field">
+            <label>Performance Rating</label>
+            <div class="slider-wrap">
+              <input type="range" id="f_perf" min="1" max="4" value="3" oninput="updSlider(this,'perfVal')" />
+              <span id="perfVal" class="slider-val">3</span>
+            </div>
+          </div>
+          <div class="form-field">
+            <label>Overall Index (1.0 – 5.0)</label>
+            <div class="slider-wrap">
+              <input type="range" id="f_overall" min="10" max="50" value="30" step="1" oninput="updSliderF(this,'overallVal')" />
+              <span id="overallVal" class="slider-val">3.0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section-label">📈 Career History</div>
+        <div class="form-grid">
+          <div class="form-field">
+            <label for="f_total_yrs">Total Working Years</label>
+            <input type="number" id="f_total_yrs" min="0" max="40" value="8" />
+          </div>
+          <div class="form-field">
+            <label for="f_companies">Companies Worked</label>
+            <input type="number" id="f_companies" min="0" max="10" value="2" />
+          </div>
+          <div class="form-field">
+            <label for="f_yrs_company">Years at Company</label>
+            <input type="number" id="f_yrs_company" min="0" max="40" value="3" />
+          </div>
+          <div class="form-field">
+            <label for="f_yrs_role">Years in Current Role</label>
+            <input type="number" id="f_yrs_role" min="0" max="20" value="2" />
+          </div>
+          <div class="form-field">
+            <label for="f_yrs_promo">Years Since Last Promotion</label>
+            <input type="number" id="f_yrs_promo" min="0" max="15" value="1" />
+          </div>
+          <div class="form-field">
+            <label for="f_yrs_mgr">Years with Current Manager</label>
+            <input type="number" id="f_yrs_mgr" min="0" max="17" value="2" />
+          </div>
+          <div class="form-field">
+            <label for="f_training">Training Times Last Year</label>
+            <input type="number" id="f_training" min="0" max="6" value="3" />
+          </div>
+        </div>
+
+        <div style="margin-top:24px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-primary" type="submit" id="predictBtn">🔮 Predict Attrition Risk</button>
+          <button class="btn btn-secondary" type="button" onclick="fillHighRisk()">📋 High-Risk Profile</button>
+          <button class="btn btn-secondary" type="button" onclick="fillLowRisk()">📋 Low-Risk Profile</button>
+        </div>
+      </form>
+
+      <div id="predictResult" style="margin-top:24px"></div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="card full">
+      <div class="card-header">
+        <h3>Step 3 — Attrition Risk Watchlist</h3>
+        <span class="badge badge-purple">bulk_write · $sort · $exists</span>
+      </div>
+      <p class="desc">
+        Shows retained employees scored by <code>ml_model.py</code>'s <code>bulk_write</code>.
+        Requires running <code>python ml_model.py</code> first to generate risk scores.
+      </p>
+      <button class="btn btn-primary" onclick="loadML()">▶ Load Watchlist</button>
+      <div id="mlResult"></div>
+    </div>
+
+    <!-- Prediction Log -->
+    <div class="card full">
+      <div class="card-header">
+        <h3>Prediction Audit Log</h3>
+        <span class="badge badge-purple">prediction_log · find().sort()</span>
+      </div>
+      <p class="desc">Every prediction made via the form is stored in MongoDB's <code>prediction_log</code> collection — demonstrating write-back patterns.</p>
+      <button class="btn btn-secondary" onclick="loadPredictionLog()">📋 Load from MongoDB</button>
+      <div id="predictionLog" style="margin-top:14px"></div>
+    </div>
+
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
