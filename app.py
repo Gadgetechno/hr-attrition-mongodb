@@ -5,6 +5,7 @@ modules (crud_operations, aggregations, indexing_demo, ml_model).
 """
 
 import json
+import os
 import time
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -31,6 +32,24 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 # ---------------------------------------------------------------------------
 client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = client[DB_NAME]
+
+
+def check_and_auto_init():
+    """Ensure database collections are populated on startup if connected to an empty MongoDB."""
+    if os.environ.get("AUTO_INIT_DB", "true").lower() in ("true", "1", "yes"):
+        try:
+            if db[COLL_EMPLOYEES].count_documents({}) == 0:
+                print("[INFO] No employee records found in database. Running auto-initialization...")
+                import setup_database
+                import ingest_data
+                setup_database.main()
+                ingest_data.main()
+                print("[INFO] Database successfully initialized.")
+        except Exception as e:
+            print(f"[WARN] Database auto-initialization skipped or encountered an error: {e}")
+
+
+check_and_auto_init()
 
 # ---------------------------------------------------------------------------
 # Model cache – trained once on demand, held in memory for fast predictions
@@ -863,4 +882,6 @@ def projects_list():
 #  RUN
 # ===========================================================================
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    debug = os.environ.get("FLASK_DEBUG", "false").lower() in ("true", "1", "yes")
+    app.run(host="0.0.0.0", port=port, debug=debug)

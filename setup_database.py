@@ -254,6 +254,7 @@ def create_indexes(db: Database) -> None:
     db[COLL_JOB_ROLES].create_index("role_id", unique=True)
     db[COLL_PROJECTS].create_index("project_id", unique=True)
     db[COLL_EXIT_INTERVIEWS].create_index("employee_number", unique=True)
+    db[COLL_EXIT_INTERVIEWS].create_index([("comments", "text")])
 
 
 def main() -> None:

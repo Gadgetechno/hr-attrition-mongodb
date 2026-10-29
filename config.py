@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
-DB_NAME = "hr_analytics"
+DB_NAME = os.environ.get("DB_NAME", "hr_analytics")
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
